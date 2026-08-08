@@ -191,9 +191,12 @@ fi
 VBoxManage setextradata "$vmName" GUI/ScaleFactor 1.5
 
 # Enable Remote Desktop options on port 10001 for ease of administration
-VBoxManage modifyvm "$vmName" --vrde=off
-# VDRE is not supported correctly, ignore
-# VBoxManage modifyvm "$vmName" --vrde-multi-con=on --vrde-port=10001
+VBoxManage modifyvm "$vmName" --vrde=on
+VBoxManage modifyvm "$vmName" --vrde-multi-con=on --vrde-port=10001
+
+# Make sure that VDRE is set to the correct port
+VBoxManage showvminfo "vb0" | grep -i -A8 vrde
+ss -ltn | grep ':10001'
 
 # Verify the Virtual Machine after everything has been set up
 # VBoxManage startvm "$vmName" --type headless
