@@ -195,7 +195,7 @@ VBoxManage modifyvm "$vmName" --vrde=on
 VBoxManage modifyvm "$vmName" --vrde-multi-con=on --vrde-port=10001
 
 # Make sure that VDRE is set to the correct port
-VBoxManage showvminfo "vb0" | grep -i -A8 vrde
+VBoxManage showvminfo "$vmName" | grep -i -A8 vrde
 ss -ltn | grep ':10001'
 
 # Verify the Virtual Machine after everything has been set up
