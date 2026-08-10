@@ -137,9 +137,20 @@ VBoxManage hostonlyif ipconfig vboxnet0 --ip 192.168.56.1 --netmask 255.255.255.
 ip addr show "$hostOnlyIf"
 
 # Set network adapters to match test virtual machine cluster for easier configuration
+
+# Get the real physical LAN adapter of the host device
+bridgeIf=$(ip -4 route show default | awk '{print $5; exit}')
+echo "Physical bridged interface: $bridgeIf"
+
 # Network adapter 1 is the host-only connection, which allows for local communication, host only adapter is set to vboxnet0
 # Network adapter 2 is the NAT, which allows for downloads and updates from the wider internet
+# Network adapter 3 is a LAN bridge that allows for proper communication to other virtual machines on different computers
 VBoxManage modifyvm "$vmName" --nic1 hostonly --host-only-adapter1 vboxnet0 --nic2 nat
+VBoxManage modifyvm "$vmName" --nic3=bridged --bridge-adapter3="$bridgeIf" --cable-connected3=on
+
+# Setting the MAC address takes too long and will remain in the router for an extended period of time, ignoring
+#echo "Reserve router ip address for $vmName using the following MAC address:"
+#VBoxManage showvminfo "$vmName" --machinereadable | grep '^macaddress3='
 
 vmDisk="$vmBase/Ubuntu_64_$vmName.vdi"
 diskCreated=0
@@ -163,8 +174,8 @@ else
         echo "Creating SATA Controller..."
         # Create SATA controller and attach the virtual disk
         VBoxManage storagectl "$vmName" --name "SATA Controller" --add sata --controller IntelAhci
+        VBoxManage storageattach "$vmName" --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium "$vmBase/Ubuntu_64_$vmName.vdi"
 fi
-VBoxManage storageattach "$vmName" --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium "$vmBase/Ubuntu_64_$vmName.vdi"
 
 # Check if an existing IDE controller exists for $vmName
 if VBoxManage showvminfo "$vmName" --machinereadable | grep -E '^storagecontrollername[0-9]+="IDE Controller"$' >/dev/null; then
@@ -175,8 +186,8 @@ else
         echo "Creating IDE Controller"
         # Create IDE controller and attach the DVD drive so that the ubuntu server iso can be mounted and be used to reinstall the OS
         VBoxManage storagectl "$vmName" --name "IDE Controller" --add ide --controller PIIX4
+        VBoxManage storageattach "$vmName" --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium "$iso"
 fi
-VBoxManage storageattach "$vmName" --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium "$iso"
 
 # Configure the VM such that the iso is booted into first upon first encounter
 if [[ "$diskCreated" -eq 1 ]]; then
@@ -184,15 +195,22 @@ if [[ "$diskCreated" -eq 1 ]]; then
         VBoxManage modifyvm "$vmName" --boot1 dvd --boot2 disk --boot3 none --boot4 none
 else
         echo "Existing disk detected. Booting from hard disk first."
-        # VBoxManage modifyvm "$vmName" --boot1 disk --boot2 dvd --boot3 none --boot4 none
+        VBoxManage modifyvm "$vmName" --boot1 disk --boot2 dvd --boot3 none --boot4 none
 fi
 
 # Default installer resolution is 800x600, which looks small on most screens
-VBoxManage setextradata "$vmName" GUI/ScaleFactor 1.5
+VBoxManage setextradata "$vmName" GUI/ScaleFactor 1.0
+VBoxManage setextradata global GUI/MaxGuestResolution any
+VBoxManage getextradata "$vmName" GUI/LastGuestSizeHint
 
 # Enable Remote Desktop options on port 10001 for ease of administration
 VBoxManage modifyvm "$vmName" --vrde=on
 VBoxManage modifyvm "$vmName" --vrde-multi-con=on --vrde-port=10001
+
+# Enable bi-directional clipboard sharing
+VBoxManage modifyvm "$vmName" --clipboard-mode=bidirectional --clipboard-file-transfers=enabled
+# Optional clipboard modification since drag and drop is not useful on a os with no gui
+VBoxManage modifyvm "$vmName" --drag-and-drop=bidirectional
 
 # Make sure that VDRE is set to the correct port
 # VBoxManage showvminfo "$vmName" | grep -i -A8 vrde
